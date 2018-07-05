@@ -43,7 +43,7 @@ class instagram_bot:
 			print('Logged in from recent cookies')
 		else:
 			self.login()
-		self.get()
+		self.start_get_profile_posts()
 
 	def get_shared_data(self, username=''):
 		resp = self.session.get(self.constants['Base_url']+username)
@@ -64,12 +64,12 @@ class instagram_bot:
 		if login.status_code == 200 and login_json['authenticated']:
 			self.logged = True
 			self.rhx_gis = self.get_shared_data()['rhx_gis']
-			open('new_cookies.txt', 'w+').write(';'.join(["%s=%s" % (key, value) for (key, value) in self.cookies.items()]))
+			open('new_cookies.txt', 'a+').write(';'.join(["%s=%s" % (key, value) for (key, value) in self.cookies.items()]))
 		else:
 			print("Wrong Username or Password. Terminated")
 			os._exit(1)
 
-	def get_profile_posts(self, username, path):
+	def get_profile_posts(self, username, path, check_update=False):
 		json_data = self.get_shared_data(username)
 		self.session.headers.update({'X-Requested-With': 'XMLHttpRequest', 'X-Instagram-GIS': self.rhx_gis, 'Referer': self.constants['Base_url']+username})
 		graph_id_api = lambda: [x.split('",')[0] for x in self.session.get('https://www.instagram.com' + [x for x in
@@ -83,12 +83,17 @@ class instagram_bot:
 																								   x['src']][0]['src']).text.split(',queryId:"')[1:]][-2]
 		user = json_data['entry_data']['ProfilePage'][0]['graphql']['user']
 		user_id, is_private, has_next_page, next_page_cursor, this_page_posts, file_writer = user['id'], user['is_private'], user['edge_owner_to_timeline_media']['page_info']['has_next_page'], user['edge_owner_to_timeline_media']['page_info']['end_cursor'], user['edge_owner_to_timeline_media']['edges'], open(path, 'a+')
+		main_data = file_writer.read()
+		if check_update:
+			if file_writer.readline() == str({'id': this_page_posts[0]['node']['id'],
+							'post_url': 'https://www.instagram.com/p/%s' % i['node']['shortcode']}):
+				return 'There\'s no updates scraper will stop'
 		if not is_private:
 			for i in this_page_posts:
 				data = str({'id': i['node']['id'],
 							'post_url': 'https://www.instagram.com/p/%s' % i['node']['shortcode']})
-				file_writer.write(data + "\n")
-				print(data)
+				if data not in main_data:
+					file_writer.write(data + "\n")
 			if has_next_page:
 				def scraper(next_page: str):
 					api_url = 'https://www.instagram.com/graphql/query/?query_hash=%s&variables={"id":"%s","first":100,"after":"%s"}' % (
@@ -105,32 +110,26 @@ class instagram_bot:
 						return posts_data['data']['user']['edge_owner_to_timeline_media']
 					except Exception as e:
 						if resp.status_code == 429:
-							print('Retrying.')
 							self.session = requests.session()
 							self.login()
 							scraper(next_page_cursor)
-
 				data = scraper(next_page_cursor)
 				if data:
 					while has_next_page:
 						for i in data['edges']:
 							data_to_scrape = str({'id': i['node']['id'],
 									 'post_url': 'https://www.instagram.com/p/%s' % i['node']['shortcode']})
-							file_writer.write(data_to_scrape + "\n")
-							print(data_to_scrape)
+							if data_to_scrape not in main_data:
+								file_writer.write(data_to_scrape + "\n")
 						next_page_cursor, has_next_page = data['page_info']['end_cursor'], data['page_info']['has_next_page']
 						data = scraper(next_page_cursor)
 						if not data:
 							file_writer.close()
 		file_writer.close()
 
-	def get(self):
+	def start_get_profile_posts(self):
 		if self.usernames and self.logged:
 			for username in self.usernames:
 				print('Scrapping %s' % username)
 				self.get_profile_posts(username, os.path.join(self.path_dir, username))
 			print("Done. You will find posts in %s" % self.path_dir)
-
-
-login_settings = {'username': 'ece86013b8@emailna.life', 'password': 'Th3@Professional'}
-instagram_bot(usernames=[], login_username=login_settings['username'], login_password=login_settings['password'])
