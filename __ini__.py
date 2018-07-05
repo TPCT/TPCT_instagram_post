@@ -1,91 +1,136 @@
-def Insta_Post_Links_list(username):
-	import json, requests, time, random, bs4, warnings
-	random_useragents =lambda: random.choice([
-                 lambda: 'Mozilla/5.0 (Macintosh; Intel Mac OS X %s_%s_%s) AppleWebKit/%s.%s (KHTML, like Gecko) Chrome/%s.%s.%s.%s Safari/%s.%s'% (
-					 random.randint(1, 999), random.randint(1, 999), random.randint(1, 999), random.randint(1, 1000),
-					 random.randint(1, 9999), random.randint(1, 10000), random.randint(1, 10000), random.randint(1, 100000),
-					 random.randint(1, 100000), random.randint(1000, 9999), random.randint(1000, 9999)),
-                 lambda: 'Mozilla/%s (Windows NT %s; Win%s; x%s) AppleWebKit/%s (KHTML, like Gecko) Chrome/%s.%s.%s.%s Safari/%s.%s' % (
-					 random.randint(1, 999), random.randint(1, 999), random.randint(1, 999), random.randint(1, 1000),
-					 random.randint(1, 9999), random.randint(1, 10000), random.randint(1, 10000), random.randint(1, 100000),
-					 random.randint(1, 100000), random.randint(1000, 9999), random.randint(1000, 9999)),
-										  lambda: 'Mozilla/%s (Windows NT %s; WOW%s; rv:%s) Gecko/%s Firefox/%s' % (
-										  random.randint(1, 999), random.randint(1, 999), random.randint(1, 999),
-										  random.randint(1, 999), random.randint(10000000, 99999999), random.randint(1, 999)),
-										  lambda: 'Instagram %s.%s.%s Android (%s/%s.%s.%s; 480dpi; 1152x1920; Meizu; MX%s; mx4; mt%s; en_US)' % (
-										  random.randint(1, 99), random.randint(1, 99), random.randint(1, 99),
-										  random.randint(1, 99), random.randint(1, 99), random.randint(1, 99),
-										  random.randint(1, 99), random.randint(1000, 9999), random.randint(1000, 9999))])
-	login_settings = {'username': 'ece86013b8@emailna.life', 'password': 'Th3@Professional'}
+import requests, bs4, time, random, warnings, json, os
+
+
+class instagram_bot:
 	warnings.filterwarnings('ignore')
-	headers, session = {
-		'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-		'accept-language': 'en-US,en;q=0.5',
-		'Chache-Control': 'max-age=0',
-		'Accept-Encoding': 'gzip, deflate, br',
-		'Connection': 'keep-alive',
-		'Host': 'www.instagram.com',
-		'Cookie': '',
-		'DNT': '%s' % random.randint(1, 10),
-		'Referer': str('https://www.instagram.com/%s/' % username),
-		'User-Agent': random_useragents()(),
-		'Cookie2': '$Version=%s' % random.randint(1, 10),
-		'Upgrade-Insecure-Requests': '1',
-		'X-Instagram-AJAX': str(random.random()),
-		'Content-Type': 'application/x-www-form-urlencoded',
-		'x-requested-with': 'XMLHttpRequest'
-	}, requests.session()
-	request = session.get('https://www.instagram.com/accounts/login/?force_classic_login')
-	csrf_token = request.cookies['csrftoken']
-	session.headers.update({'X-CSRFToken': csrf_token})
-	login = session.post('https://www.instagram.com/accounts/login/?force_classic_login', data=login_settings,
-						 allow_redirects=True)
-	session.headers.update(headers)
-	request = session.get('https://www.instagram.com/%s/?en&hl=en' % username)
-	if 'error-container' in request.text:
-		return 'Wrong username or password'
-	session.headers.update({'X-CSRFToken': csrf_token})
-	json_load = (request.text.split('window._sharedData = ')[1].split('<')[0].encode(errors='ignore').decode(
-		errors='ignore')).replace(';', '')
-	json_load = json.loads(json_load)
-	new_cookies = lambda: ';'.join(['%s=%s' % (key, value) for (key, value) in session.cookies.items()])
-	session.headers['Cookie'] = new_cookies()
-	user = json_load['entry_data']['ProfilePage'][0]['graphql']['user']
-	user_id = user['id']
-	has_next_page = user['edge_owner_to_timeline_media']['page_info']['has_next_page']
-	next_page_cursor = user['edge_owner_to_timeline_media']['page_info']['end_cursor']
-	posts_data = []
-	if has_next_page:
-		api_access = session.get('https://www.instagram.com' + [x for x in [x for x in
-																			bs4.BeautifulSoup(request.text).find_all(
-																				'script') if x.get('src', None)] if
-																'ProfilePageContainer' in x['src']][0]['src'])
-		session.headers.update({'X-CSRFToken': csrf_token})
-		api_access = [x.split('",')[0] for x in api_access.text.split(',queryId:"')[1:]][-2]
-		def scraper(next_page: str):
-			try:
-				api_url = 'https://www.instagram.com/graphql/query/?query_hash=%s&variables={"id":"%s","first":100,"after":"%s"}' % (
-					api_access, user_id, next_page)
-				time.sleep(5 * random.uniform(0.0, 2.0))
-				session.headers['User-Agent'] = random_useragents()()
-				session.headers['Cookie'] = new_cookies()
-				return json.loads(session.get(api_url).text)['data']['user']['edge_owner_to_timeline_media']
-			except Exception as e:
-				return None
-		data = scraper(next_page_cursor)
-		if data:
-			while has_next_page:
-				for i in data['edges']:
-					posts_data.append(
-						{'id': i['node']['id'], 'post_url': 'https://www.instagram.com/p/%s' % i['node']['shortcode']})
-				next_page_cursor, has_next_page = data['page_info']['end_cursor'], data['page_info']['has_next_page']
-				data = scraper(next_page_cursor)
-				if not data:
-					return posts_data
+
+	def __init__(self, usernames=[], login_username='', login_password=''):
+		self.posts, self.usernames, self.sleep, self.username, self.password, self.logged, self.session, self.rhx_gis, self.random_useragent, self.cookies, self.graph_id = [], usernames, lambda: time.sleep(delay / 5), login_username, login_password, False, requests.session(), None, lambda: random.choice([
+				lambda: 'Mozilla/5.0 (Macintosh; Intel Mac OS X %s_%s_%s) AppleWebKit/%s.%s (KHTML, like Gecko) Chrome/%s.%s.%s.%s Safari/%s.%s' % (
+					random.randint(1, 999), random.randint(1, 999), random.randint(1, 999), random.randint(1, 1000),
+					random.randint(1, 9999), random.randint(1, 10000), random.randint(1, 10000),
+					random.randint(1, 100000),
+					random.randint(1, 100000), random.randint(1000, 9999), random.randint(1000, 9999)),
+				lambda: 'Mozilla/%s (Windows NT %s; Win%s; x%s) AppleWebKit/%s (KHTML, like Gecko) Chrome/%s.%s.%s.%s Safari/%s.%s' % (
+					random.randint(1, 999), random.randint(1, 999), random.randint(1, 999), random.randint(1, 1000),
+					random.randint(1, 9999), random.randint(1, 10000), random.randint(1, 10000),
+					random.randint(1, 100000),
+					random.randint(1, 100000), random.randint(1000, 9999), random.randint(1000, 9999)),
+				lambda: 'Mozilla/%s (Windows NT %s; WOW%s; rv:%s) Gecko/%s Firefox/%s' % (
+					random.randint(1, 999), random.randint(1, 999), random.randint(1, 999),
+					random.randint(1, 999), random.randint(10000000, 99999999), random.randint(1, 999)),
+				lambda: 'Instagram %s.%s.%s Android (%s/%s.%s.%s; 480dpi; 1152x1920; Meizu; MX%s; mx4; mt%s; en_US)' % (
+					random.randint(1, 99), random.randint(1, 99), random.randint(1, 99),
+					random.randint(1, 99), random.randint(1, 99), random.randint(1, 99),
+					random.randint(1, 99), random.randint(1000, 9999), random.randint(1000, 9999))]), None, None
+		self.constants, self.main_request = {'Base_url': 'https://www.instagram.com/', 'login_url': 'https://www.instagram.com/accounts/login/ajax/'}, None
+		self.local_time = time.localtime(time.time())
+		self.path_dir = os.path.join(os.path.dirname(__file__), "%s.%s.%s" % (self.local_time.tm_year, self.local_time.tm_mon, self.local_time.tm_mday))
+		if not os.path.isdir(self.path_dir):
+			os.mkdir(self.path_dir)
+		self.session.headers.update({'Referer': self.constants['Base_url']+str(random.uniform(0.0, 100000000.0)), 'User-Agent': 'Instagram %s.%s.%s (iPhone%s,%s; iPhone OS %s_%s_%s; en_US; en-US; scale=2.00; 750x1334) AppleWebKit/%s+' % (random.randint(0, 99), random.randint(0, 99), random.randint(0, 99), random.randint(5, 100), random.randint(1, 10), random.randint(8, 10), random.randint(0, 100), random.randint(0, 100), random.randint(100, 1000))})
+
+		def check_login():
+			if os.path.isfile('new_cookies.txt'):
+				self.session.cookies = requests.utils.cookiejar_from_dict(dict(x.split('=') for x in open(os.path.join(os.path.dirname(__file__), 'new_cookies.txt'),'r').read().split(';')))
+				request = self.session.get('https://www.instagram.com')
+				if 'logged-in' not in request.text:
+					return False
+				return True
+			return False
+		if check_login():
+			self.logged = True
+			print('Logged in from recent cookies')
 		else:
-			return 'Please Enter New Username and Password'
-	else:
-		for i in user['edge_owner_to_timeline_media']['edges']:
-			posts_data.append(
-				{'id': i['node']['id'], 'post_url': 'https://www.instagram.com/p/%s' % i['node']['shortcode']})
-	return posts_data
+			self.login()
+		self.get()
+
+	def get_shared_data(self, username=''):
+		resp = self.session.get(self.constants['Base_url']+username)
+		self.main_request = resp.text
+		if resp.status_code == 200 and resp.text.__contains__('_sharedData'):
+			return json.loads(resp.text.split('window._sharedData = ')[1].split(';</script>')[0])
+		return None
+
+	def login(self):
+		self.session.cookies.set('ig_pr', '1')
+		self.session.headers.update({'Referer': self.constants['Base_url']+str(random.uniform(0.0, 100000000.0)), 'User-Agent': 'Instagram %s.%s.%s (iPhone%s,%s; iPhone OS %s_%s_%s; en_US; en-US; scale=2.00; 750x1334) AppleWebKit/%s+' % (random.randint(0, 99), random.randint(0, 99), random.randint(0, 99), random.randint(5, 100), random.randint(1, 10), random.randint(8, 10), random.randint(0, 100), random.randint(0, 100), random.randint(100, 1000))})
+		request = self.session.get(self.constants['Base_url'])
+		self.session.headers.update({'X-CSRFToken': request.cookies['csrftoken']})
+		login_data = {'username': self.username, 'password': self.password}
+		login = self.session.post(self.constants['login_url'], data=login_data, allow_redirects=True)
+		self.session.headers.update({'X-CSRFToken': login.cookies['csrftoken']})
+		self.cookies, login_json = login.cookies, json.loads(login.text)
+		if login.status_code == 200 and login_json['authenticated']:
+			self.logged = True
+			self.rhx_gis = self.get_shared_data()['rhx_gis']
+			open('new_cookies.txt', 'w+').write(';'.join(["%s=%s" % (key, value) for (key, value) in self.cookies.items()]))
+		else:
+			print("Wrong Username or Password. Terminated")
+			os._exit(1)
+
+	def get_profile_posts(self, username, path):
+		json_data = self.get_shared_data(username)
+		self.session.headers.update({'X-Requested-With': 'XMLHttpRequest', 'X-Instagram-GIS': self.rhx_gis, 'Referer': self.constants['Base_url']+username})
+		graph_id_api = lambda: [x.split('",')[0] for x in self.session.get('https://www.instagram.com' + [x for x in
+																								   [x for x in
+																									bs4.BeautifulSoup(
+																										self.session.get(self.constants['Base_url'] + username).text).find_all(
+																										'script') if
+																									x.get('src', None)]
+																								   if
+																								   'ProfilePageContainer' in
+																								   x['src']][0]['src']).text.split(',queryId:"')[1:]][-2]
+		user = json_data['entry_data']['ProfilePage'][0]['graphql']['user']
+		user_id, is_private, has_next_page, next_page_cursor, this_page_posts, file_writer = user['id'], user['is_private'], user['edge_owner_to_timeline_media']['page_info']['has_next_page'], user['edge_owner_to_timeline_media']['page_info']['end_cursor'], user['edge_owner_to_timeline_media']['edges'], open(path, 'a+')
+		if not is_private:
+			for i in this_page_posts:
+				data = str({'id': i['node']['id'],
+							'post_url': 'https://www.instagram.com/p/%s' % i['node']['shortcode']})
+				file_writer.write(data + "\n")
+				print(data)
+			if has_next_page:
+				def scraper(next_page: str):
+					api_url = 'https://www.instagram.com/graphql/query/?query_hash=%s&variables={"id":"%s","first":100,"after":"%s"}' % (
+						graph_id_api(), user_id, next_page)
+					resp = None
+					try:
+						self.session.cookies.clear_expired_cookies()
+						requests_session = self.session.get(api_url)
+						resp = requests_session
+						time.sleep(random.uniform(1, 10))
+						self.session.headers.update({'Cookie': ';'.join(
+							["%s=%s" % (key, value) for (key, value) in self.session.cookies.items()])})
+						posts_data = json.loads(requests_session.text)
+						return posts_data['data']['user']['edge_owner_to_timeline_media']
+					except Exception as e:
+						if resp.status_code == 429:
+							print('Retrying.')
+							self.session = requests.session()
+							self.login()
+							scraper(next_page_cursor)
+
+				data = scraper(next_page_cursor)
+				if data:
+					while has_next_page:
+						for i in data['edges']:
+							data_to_scrape = str({'id': i['node']['id'],
+									 'post_url': 'https://www.instagram.com/p/%s' % i['node']['shortcode']})
+							file_writer.write(data_to_scrape + "\n")
+							print(data_to_scrape)
+						next_page_cursor, has_next_page = data['page_info']['end_cursor'], data['page_info']['has_next_page']
+						data = scraper(next_page_cursor)
+						if not data:
+							file_writer.close()
+		file_writer.close()
+
+	def get(self):
+		if self.usernames and self.logged:
+			for username in self.usernames:
+				print('Scrapping %s' % username)
+				self.get_profile_posts(username, os.path.join(self.path_dir, username))
+			print("Done. You will find posts in %s" % self.path_dir)
+
+
+login_settings = {'username': 'ece86013b8@emailna.life', 'password': 'Th3@Professional'}
+instagram_bot(usernames=[], login_username=login_settings['username'], login_password=login_settings['password'])
